@@ -7,7 +7,6 @@ import gintro/[glib, gobject, gtk]
 import gintro/gio except ListStore
 
 const
-  LIST_ITEM = 0
   N_COLUMNS = 2
   DELAY = 750 # ms
 
@@ -24,16 +23,26 @@ proc workProc =
     let msg = workChannel.tryRecv()
     if msg.dataAvailable:
       let (basePath, tArgs, pattern) = msg.msg
-      if len(pattern) > 2:
-        let command = &"rg {tArgs} {pattern.quoteShell} {basePath.quoteShell}"
+      if len(pattern) > 1:
+        let command = &"rg -n {tArgs} {pattern.quoteShell} {basePath.quoteShell}"
+        # TODO stream output
         let (output, code) = execCmdEx(command)
         if code == 0:
           var results = initTable[string, seq[string]]()
-          for line in output.split(Newlines):
-            let parts = line.replace("C:", "").split(":", 1)
-            if len(parts) == 2:
-              let file = &"C:{parts[0]}"
-              let match = parts[1]
+          for outputLine in output.split(Newlines):
+            var line: string
+            var prependPath = ""
+            # TODO use regex
+            if outputLine.contains("C:"):
+              line = outputLine.replace("C:", "")
+              prependPath = "C:"
+            else:
+              line = outputLine
+
+            let parts = line.split(":", 2)
+            if len(parts) == 3:
+              let file = &"{prependPath}{parts[0]} ({parts[1]})"
+              let match = parts[2]
 
               if file notin results:
                 results[file] = newSeq[string]()
@@ -89,16 +98,6 @@ proc showResults(entry: Entry): bool =
     return SOURCE_REMOVE
 
   return SOURCE_CONTINUE
-
-proc removeItem(widget: Button; selection: TreeSelection) =
-  var
-    ls: ListStore
-    iter: TreeIter
-  let store = list.getModel.listStore
-  if not store.getIterFirst(iter):
-      return
-  if getSelected(selection, ls, iter):
-    discard store.remove(iter)
 
 proc initList(list: TreeView) =
   let renderer = newCellRendererText()
